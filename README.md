@@ -212,7 +212,327 @@ public class Person
 ### Grant Permission to the Identity
 - Identities must have permissions to perform the intended actions. This is typically done by assigning a role in Azure role-based access control or specifying the identity in an access policy, depending on the service to which you're connecting.
 - Some permissions might be exposed by the target service that aren't necessary for all contexts. Where possible, adhere to the principle of least privilege, granting the identity only required privileges.
+
+## Implement Azure Key Vault
+- Azure Key Vault is a cloud service for securely storing and accessing secrets. A secret is anything that you want to tightly control access to, such as API keys, passwords, certificates, or cryptographic keys.
+- The Azure Key Vault service supports two types of containers: vaults and managed hardware security module(HSM) pools. Vaults support storing software and HSM-backed keys, secrets, and certificates. Managed HSM pools only support HSM-backed keys.
+- Azure Key Vault helps solve the following problems:
+- **Secrets Management**: Azure Key Vault can be used to Securely store and tightly control access to tokens, passwords, certificates, API keys, and other secrets
+- **Key Management**: Azure Key Vault can also be used as a Key Management solution. Azure Key Vault makes it easy to create and control the encryption keys used to encrypt your data.
+- **Certificate Management**: Azure Key Vault is also a service that lets you easily provision, manage, and deploy public and private Secure Sockets Layer/Transport Layer Security (SSL/TLS) certificates for use with Azure and your internal connected resources.
+- Azure Key Vault has two service tiers: Standard, which encrypts with a software key, and a Premium tier, which includes hardware security module(HSM)-protected keys.
+
+## Key Benefits of using Azure Key Vault
+- **Centralized application secrets**: Centralizing storage of application secrets in Azure Key Vault allows you to control their distribution. For example, instead of storing the connection string in the app's code you can store it securely in Key Vault. Your applications can securely access the information they need by using URIs. These URIs allow the applications to retrieve specific versions of a secret.
+- **Securely store secrets and keys**: Access to a key vault requires proper authentication and authorization before a caller (user or application) can get access. Authentication is done via Microsoft Entra ID. Authorization may be done via Azure role-based access control (Azure RBAC) or Key Vault access policy. Azure RBAC can be used for both management of the vaults and to access data stored in a vault, while key vault access policy can only be used when attempting to access data stored in a vault. Azure Key Vaults may be either software-protected or, with the Azure Key Vault Premium tier, hardware-protected by hardware security modules (HSMs).
+- **Monitor access and use**: You can monitor activity by enabling logging for your vaults. You have control over your logs and you may secure them by restricting access and you may also delete logs that you no longer need. Azure Key Vault can be configured to:
+
+- Archive to a storage account.
+- Stream to an event hub.
+- Send the logs to Azure Monitor logs.
+
+- **Simplified administration of application secrets**: Security information must be secured, it must follow a life cycle, and it must be highly available. Azure Key Vault simplifies the process of meeting these requirements by:
+
+- Removing the need for in-house knowledge of Hardware Security Modules
+- Scaling up on short notice to meet your organization’s usage spikes.
+- Replicating the contents of your Key Vault within a region and to a secondary region. Data replication ensures high availability and takes away the need of any action from the administrator to trigger the failover.
+- Providing standard Azure administration options via the portal, Azure CLI and PowerShell.
+- Automating certain tasks on certificates that you purchase from Public CAs, such as enrollment and renewal.
+
+## Azure Key Vault Best practices
+- Azure Key Vault is a tool for securely storing and accessing secrets. A secret is anything that you want to tightly control access to, such as API keys, passwords, or certificates. A vault is logical group of secrets.
+
+### Authenticating to the Key Vault
+- To do any operations with Key Vault, you first need to authenticate to it. There are three ways to authenticate to Key Vault
+- **Managed identities for Azure resources**: When you deploy an app on a virtual machine in Azure, you can assign an identity to your virtual machine that has access to Key Vault. You can also assign identities to other Azure resources. The benefit of this approach is that the app or service isn't managing the rotation of the first secret. Azure automatically rotates the service principal client secret associated with the identity. ***We recommend this approach as a best practice***.
+- **Service principal and certificate**: You can use a service principal and an associated certificate that has access to Key Vault. We don't recommend this approach because the application owner or developer must rotate the certificate.
+- **Service principal and secret**: Although you can use a service principal and a secret to authenticate to Key Vault, we don't recommend it. It's hard to automatically rotate the bootstrap secret that's used to authenticate to Key Vault.
+
+### Encryption of Data in Transit
+- Azure Key Vault enforces Transport Layer Security (TLS) protocol to protect data when it’s traveling between Azure Key Vault and clients.
+- Clients negotiate a TLS connection with Azure Key Vault. TLS provides strong authentication, message privacy, and integrity (enabling detection of message tampering, interception, and forgery), interoperability, algorithm flexibility, and ease of deployment and use.
+- Perfect Forward Secrecy (PFS) protects connections between customers’ client systems and Microsoft cloud services by unique keys. Connections also use RSA-based 2,048-bit encryption key lengths. This combination makes it difficult for someone to intercept and access data that is in transit.
+
+### Azure Key Vault Best Practices
+- **Use separate key vaults**: Recommended using a vault per application per environment (Development, Pre-Production and Production). This pattern helps you not share secrets across environments and also reduces the threat if there is a breach.
+- **Control access to your vault**: Key Vault data is sensitive and business critical, you need to secure access to your key vaults by allowing only authorized applications and users.
+- **Backup**: Create regular back ups of your vault on update/delete/create of objects within a Vault.
+- **Logging**: Be sure to turn on logging and alerts.
+- **Recovery options**: Turn on soft-delete and purge protection if you want to guard against force deletion of the secret.
+
+### Authenticate to Azure Key Vault
+- Authentication with Key Vault works with Microsoft Entra ID, which is responsible for authenticating the identity of any given security principal.
+- For applications, there are two ways to obtain a service principal:
+- Enable a system-assigned managed identity for the application. With managed identity, Azure internally manages the application's service principal and automatically authenticates the application with other Azure services. Managed identity is available for applications deployed to various services.
+- If you can't use managed identity, you instead register the application with your Microsoft Entra tenant. Registration also creates a second application object that identifies the app across all tenants.
+ 
+ ##### It is recommended to use a system-assigned managed identity.
+
+### Authentication to Key Vault in application code
+ - Key Vault SDK is using Azure Identity client library, which allows seamless authentication to Key Vault across environments with same code.
+
+### Authentication to Key Vault with REST
+- Access tokens must be sent to the service using the HTTP Authorization header:
+```json
+PUT /keys/MYKEY?api-version=<api_version>  HTTP/1.1  
+Authorization: Bearer <access_token>
+```
+When an access token isn't supplied, or when a token isn't accepted by the service, an HTTP 401 error is returned to the client and will include the WWW-Authenticate header, for example:
+
+```json
+401 Not Authorized  
+WWW-Authenticate: Bearer authorization="…", resource="…"
+```
+- The parameters on the WWW-Authenticate header are:
+- authorization: The address of the OAuth2 authorization service that may be used to obtain an access token for the request.
+- resource: The name of the resource (https://vault.azure.net) to use in the authorization request.
+
+```shell
+# Set some variables to avoid retyping
+myKeyVault=az204vault-$RANDOM
+myLocation=<myLocation>
+
+# Create a resource group
+az group create --name az204-vault-rg --location $myLocation
+
+# Create a key vault
+az keyvault create --name $myKeyVault --resource-group az204-vault-rg --location $myLocation
+
+# Set a keyvault secret
+az keyvault secret set --vault-name $myKeyVault --name "ExamplePassword" --value "hVFkk965BuUv"
+
+# Retrieve the secret
+az keyvault secret show --name "ExamplePassword" --vault-name $myKeyVault
+
+# Value returned is "value": "hVFkk965BuUv"
+```
+
+## Azure App Configuration Service
+- Azure App Configuration provides a service to centrally manage application settings and feature flags.
+- Modern programs, especially programs running in a cloud, generally have many components that are distributed in nature. Spreading configuration settings across these components can lead to hard-to-troubleshoot errors during an application deployment. Use App Configuration to store all the settings for your application and secure their accesses in one place.
+- App Configuration offers the following benefits:
+- A fully managed service that can be set up in minutes
+- Flexible key representations and mappings
+- Tagging with labels
+- Point-in-time replay of settings
+- Dedicated UI for feature flag management
+- Comparison of two sets of configurations on custom-defined dimensions
+- Enhanced security through Azure-managed identities
+- Encryption of sensitive information at rest and in transit
+- Native integration with popular frameworks
+- App Configuration complements Azure Key Vault, which is used to store application secrets. App Configuration makes it easier to implement the following scenarios:
+- Centralize management and distribution of hierarchical configuration data for different environments and geographies
+- Dynamically change application settings without the need to redeploy or restart an application
+- Control feature availability in real-time
+- The easiest way to add an App Configuration store to your application is through a client library that Microsoft provides.
+
+### Create Paired Keys and Values
+- Azure App Configuration stores configuration data as key-value pairs.
+- Keys serve as the name for key-value pairs and are used to store and retrieve corresponding values. It's a common practice to organize keys into a hierarchical namespace by using a character delimiter, such as / or :. Use a convention that's best suited for your application. App Configuration treats keys as a whole. It doesn't parse keys to figure out how their names are structured or enforce any rule on them.
+```c#
+AppName:Service1:ApiEndpoint
+AppName:Service2:ApiEndpoint
+```
+- Keys stored in App Configuration are case-sensitive, unicode-based strings. The keys app1 and App1 are distinct in an App Configuration store. Keep this in mind when you use configuration settings within an application because some frameworks handle configuration keys case-insensitively.
+- You can use any unicode character in key names entered into App Configuration except for *, ,, and \. These characters are reserved. If you need to include a reserved character, you must escape it by using \{Reserved Character}. There's a combined size limit of 10,000 characters on a key-value pair. This limit includes all characters in the key, its value, and all associated optional attributes. Within this limit, you can have many hierarchical levels for keys.
+
+### Design Key Namespaces
+- There are two general approaches to naming keys used for configuration data: flat or hierarchical. These methods are similar from an application usage standpoint, but hierarchical naming offers many advantages:
+- Easier to read. Instead of one long sequence of characters, delimiters in a hierarchical key name function as spaces in a sentence.
+- Easier to manage. A key name hierarchy represents logical groups of configuration data.
+- Easier to use. It's simpler to write a query that pattern-matches keys in a hierarchical structure and retrieves only a portion of configuration data.
+
+### Label Keys
+- Key-values in App Configuration can optionally have a label attribute
+- Labels are used to differentiate key-values with the same key
+- A key app1 with labels A and B forms two separate keys in an App Configuration store
+- By default, a key-value has no label. To explicitly reference a key-value without a label, use \0 (URL encoded as %00).
+- ![alt text](image-11.png)
+###  Version key values
+App Configuration doesn't version key values automatically as they're modified. Use labels as a way to create multiple versions of a key value. For example, you can input an application version number or a Git commit ID in labels to identify key values associated with a particular software build.
+
+### Query key values
+- Each key-value is uniquely identified by its key plus a label that can be \0. You query an App Configuration store for key-values by specifying a pattern. The App Configuration store returns all key-values that match the pattern including their corresponding values and attributes.
+
+### Values
+- Values assigned to keys are also unicode strings. 
+- You can use all unicode characters for values. There's an optional user-defined content type associated with each value. Use this attribute to store information, for example an encoding scheme, about a value that helps your application to process it properly.
+- Configuration data stored in an App Configuration store, which includes all keys and values, is encrypted at rest and in transit. App Configuration isn't a replacement solution for Azure Key Vault. Don't store application secrets in it.
+
+## Manage Application Features
+- Feature management is a modern software-development practice that decouples feature release from code deployment and enables quick changes to feature availability on demand. It uses a technique called feature flags (also known as feature toggles, feature switches, and so on) to dynamically administer a feature's lifecycle.
+- **Feature flag**: A feature flag is a variable with a binary state of on or off. The feature flag also has an associated code block. The state of the feature flag triggers whether the code block runs or not.
+- **Feature manager**: A feature manager is an application package that handles the lifecycle of all the feature flags in an application. The feature manager typically provides extra functionality, such as caching feature flags and updating their states
+- **Filter**: A filter is a rule for evaluating the state of a feature flag. A user group, a device or browser type, a geographic location, and a time window are all examples of what a filter can represent.
+- An effective implementation of feature management consists of at least two components working in concert:
+- An application that makes use of feature flags.
+- A separate repository that stores the feature flags and their current states.
+
+### Using Feature Flags in code
+```c#
+bool featureFlag = isBetaUser();
+
+if (featureFlag) {
+    // Run the following code
+}
+
+if (featureFlag) {
+    // This following code will run if the featureFlag value is true
+} else {
+    // This following code will run if the featureFlag value is false
+}
+
+```
+
+## Feature Flag Declaration
+- Each feature flag has two parts: a name and a list of one or more filters that are used to evaluate if a feature's state is on (that is, when its value is True). A filter defines a use case for when a feature should be turned on.
+- When a feature flag has multiple filters, the filter list is traversed in order until one of the filters determines the feature should be enabled. At that point, the feature flag is on, and any remaining filter results are skipped. If no filter indicates the feature should be enabled, the feature flag is off.
+- The feature manager supports appsettings.json as a configuration source for feature flags. The following example shows how to set up feature flags in a JSON file:
+```json
+"FeatureManagement": {
+    "FeatureA": true, // Feature flag set to on
+    "FeatureB": false, // Feature flag set to off
+    "FeatureC": {
+        "EnabledFor": [
+            {
+                "Name": "Percentage",
+                "Parameters": {
+                    "Value": 50
+                }
+            }
+        ]
+    }
+}
+
+```
+
+### Feature Flag Repository
+- To use feature flags effectively, you need to externalize all the feature flags used in an application. This approach allows you to change feature flag states without modifying and redeploying the application itself.
+- Azure App Configuration is designed to be a centralized repository for feature flags. You can use it to define different kinds of feature flags and manipulate their states quickly and confidently. You can then use the App Configuration libraries for various programming language frameworks to easily access these feature flags from your application.
+  
+### Secure App Configuration Data
+- We can secure apps configuration data by using:
+- Customer-managed keys
+- Private endpoints
+- Managed identities
+
+#### Using Customer Managed Keys
+- Azure App Configuration encrypts sensitive information at rest using a 256-bit AES encryption key provided by Microsoft. Every App Configuration instance has its own encryption key managed by the service and used to encrypt sensitive information. Sensitive information includes the values found in key-value pairs. When customer-managed key capability is enabled, App Configuration uses a managed identity assigned to the App Configuration instance to authenticate with Microsoft Entra ID. The managed identity then calls Azure Key Vault and wraps the App Configuration instance's encryption key.
+- ![alt text](image-12.png)
+
+#### Using Private Endpoints for Azure App Configuration
+- You can use private endpoints for Azure App Configuration to allow clients on a virtual network to securely access data over a private link. The private endpoint uses an IP address from the virtual network address space for your App Configuration store.
+- Network traffic between the clients on the virtual network and the App Configuration store traverses over the virtual network using a private link on the Microsoft backbone network, eliminating exposure to the public internet.
+- ![alt text](image-13.png)
+
+#### Managed Identities
+- A managed identity from Microsoft Entra ID allows Azure App Configuration to easily access other Microsoft Entra ID-protected resources, such as Azure Key Vault. The identity is managed by the Azure platform. It doesn't require you to provision or rotate any secrets.
+```shell
+
+# Add a system-assigned identity
+az appconfig identity assign \ 
+    --name myTestAppConfigStore \ 
+    --resource-group myResourceGroup
+
+
+# Add a user-assigned identity
+az identity create --resource-group myResourceGroup --name myUserAssignedIdentity
+
+az appconfig identity assign --name myTestAppConfigStore \ 
+    --resource-group myResourceGroup \ 
+    --identities /subscriptions/[subscription id]/resourcegroups/myResourceGroup/providers/Microsoft.ManagedIdentity/userAssignedIdentities/myUserAssignedIdentity
+
+```
+
+## Monitor App Performance
+- Instrumenting and monitoring your apps helps you maximize their availability and performance.
+
+### Application Insights
+- Application Insights is an extension of Azure Monitor and provides Application Performance Monitoring (APM) features. APM tools are useful to monitor applications from development, through test, and into production in the following ways:
+- Proactively understand how an application is performing.
+- Reactively review application execution data to determine the cause of an incident.
+- In addition to collecting metrics and application telemetry data, which describe application activities and health, Application Insights can also be used to collect and store application trace logging data.
+- The log trace is associated with other telemetry to give a detailed view of the activity. Adding trace logging to existing apps only requires providing a destination for the logs; the logging framework rarely needs to be changed.
+- ![alt text](image-14.png)
+- Application Insights collects Metrics and application Telemetry data, which describe application activities and health, as well as trace logging data.
+- Request rates, response times, and failure rates - Find out which pages are most popular, at what times of day, and where your users are. See which pages perform best. If your response times and failure rates go high when there are more requests, then perhaps you have a resourcing problem.
+- Dependency rates, response times, and failure rates - Find out whether external services are slowing you down.
+- Exceptions - Analyze the aggregated statistics, or pick specific instances and drill into the stack trace and related requests. Both server and browser exceptions are reported.
+- Page views and load performance - reported by your users' browsers.
+- AJAX calls from web pages - rates, response times, and failure rates.
+- User and session counts.
+Performance counters from your Windows or Linux server machines, such as CPU, memory, and network usage.
+Host diagnostics from Docker or Azure.
+Diagnostic trace logs from your app - so that you can correlate trace events with requests.
+Custom events and metrics that you write yourself in the client or server code, to track business events such as items sold or games won.
+
+
+- Application Insights is one of the many services hosted within Microsoft Azure, and telemetry is sent there for analysis and presentation. It's free to sign up, and if you choose the basic pricing plan of Application Insights, there's no charge until your application has grown to have substantial usage.
+
+## Getting started with Application Insights
+- There are several ways to get started monitoring and analyzing app performance:
+
+- At run time: instrument your web app on the server. Ideal for applications already deployed. Avoids any update to the code.
+- At development time: add Application Insights to your code. Allows you to customize telemetry collection and send more telemetry.
+- Instrument your web pages for page view, AJAX, and other client-side telemetry.
+- Analyze mobile app usage by integrating with Visual Studio App Center.
+- Availability tests - ping your website regularly from our servers.
+
+### Log Based Metrics
+- Application Insights log-based metrics let you analyze the health of your monitored apps, create powerful dashboards, and configure alerts. There are two kinds of metrics:
+- Log-based metrics behind the scene are translated into Kusto queries from stored events.
+- Standard metrics are stored as preaggregated time series.
+- Since standard metrics are preaggregated during collection, they have better performance at query time. Standard metrics are a better choice for dashboarding and in real-time alerting. The log-based metrics have more dimensions, which makes them the superior option for data analysis and ad-hoc diagnostics. 
+- Developers can use the SDK to send events manually (by writing code that explicitly invokes the SDK) or they can rely on the automatic collection of events from autoinstrumentation.
+-  the Application Insights backend stores all collected events as logs, and the Application Insights blades in the Azure portal act as an analytical and diagnostic tool for visualizing event-based data from logs.
+-  Using logs to retain a complete set of events can bring great analytical and diagnostic value. For example, you can get an exact count of requests to a particular URL with the number of distinct users who made these calls. Or you can get detailed diagnostic traces, including exceptions and dependency calls for any user session. Having this type of information can significantly improve visibility into the application health and usage, allowing to cut down the time necessary to diagnose issues with an app.
+-  At the same time, collecting a complete set of events may be impractical (or even impossible) for applications that generate a large volume of telemetry. For situations when the volume of events is too high, Application Insights implements several telemetry volume reduction techniques, such as sampling and filtering that reduces the number of collected and stored events. Unfortunately, lowering the number of stored events also lowers the accuracy of the metrics that, behind the scenes, must perform query-time aggregations of the events stored in logs.
+-  The preaggregated metrics aren't stored as individual events with lots of properties. Instead, they're stored as preaggregated time series, and only with key dimensions. This makes the new metrics superior at query time: retrieving data happens faster and requires less compute power. This enables new scenarios such as near real-time alerting on dimensions of metrics, more responsive dashboards, and more.
+#### Both, log-based and pre-aggregated metrics coexist in Application Insights. To differentiate the two, in the Application Insights UX the pre-aggregated metrics are now called "Standard metrics (preview)", while the traditional metrics from the events were renamed to "Log-based metrics".
+
+- The newer SDKs (Application Insights 2.7 SDK or later for .NET) preaggregate metrics during collection. This applies to standard metrics sent by default so the accuracy isn't affected by sampling or filtering. It also applies to custom metrics sent using GetMetric resulting in less data ingestion and lower cost.
+- or the SDKs that don't implement preaggregation the Application Insights backend still populates the new metrics by aggregating the events received by the Application Insights event collection endpoint. While you don't benefit from the reduced volume of data transmitted over the wire, you can still use the preaggregated metrics and experience better performance and support of the near real-time dimensional alerting with SDKs that don't preaggregate metrics during collection.
+- It's worth mentioning that the collection endpoint preaggregates events before ingestion sampling, which means that ingestion sampling will never impact the accuracy of preaggregated metrics, regardless of the SDK version you use with your application.
+
+## Instrument an app for Monitoring
+- At a basic level, "instrumenting" is simply enabling an application to capture telemetry. There are two methods to instrument your application:
+
+- Automatic instrumentation (autoinstrumentation)
+- Manual instrumentation
+- Autoinstrumentation enables telemetry collection through configuration without touching the application's code. Although it's more convenient, it tends to be less configurable.
+- When autoinstrumentation is available, it's the easiest way to enable Azure Monitor Application Insights.
+- Manual instrumentation is coding against the Application Insights or OpenTelemetry API. In the context of a user, it typically refers to installing a language-specific SDK in an application.
+- You only need to install the Application Insights SDK in the following circumstances:
+- You require custom events and metrics
+- You require control over the flow of telemetry
+- Auto-Instrumentation isn't available (typically due to language or platform limitations)
+
+### Using OpenTelemetry
+- Microsoft worked with project stakeholders from two previously popular open-source telemetry projects, OpenCensus and OpenTracing. Together, we helped to create a single project, OpenTelemetry. OpenTelemetry includes contributions from all major cloud and Application Performance Management (APM) vendors and lives within the Cloud Native Computing Foundation (CNCF). Microsoft is a Platinum Member of the CNCF.
+- Some legacy terms in Application Insights are confusing because of the industry convergence on OpenTelemetry. The following table highlights these differences. OpenTelemetry terms are replacing Application Insights terms.
+- ![alt text](image-15.png)
+
+## Availability Tests
+- After you deploy your web app or website, you can set up recurring tests to monitor availability and responsiveness. Application Insights sends web requests to your application at regular intervals from points around the world. It can alert you if your application isn't responding or responds too slowly. You can create up to 100 availability tests per Application Insights resource.
+- Availability tests don't require any changes to the website you're testing and work for any HTTP or HTTPS endpoint that's accessible from the public internet. You can also test the availability of a REST API that your service depends on.
+- You can create up to 100 availability tests per Application Insights resource, and there are three types of availability tests:
+- Standard test: This is a type of availability test that checks the availability of a website by sending a single request, similar to the deprecated URL ping test. In addition to validating whether an endpoint is responding and measuring the performance, Standard tests also include TLS/SSL certificate validity, proactive lifetime check, HTTP request verb (for example, GET,HEAD, and POST), custom headers, and custom data associated with your HTTP request.
+- Custom TrackAvailability test: If you decide to create a custom application to run availability tests, you can use the TrackAvailability() method to send the results to Application Insights.
+- URL ping test (classic): You can create this test through the portal to validate whether an endpoint is responding and measure performance associated with that response. You can also set custom success criteria coupled with more advanced features, like parsing dependent requests and allowing for retries.
+
+
+## Troubleshooting App Performance by using Application Map
+- Application Map helps you spot performance bottlenecks or failure hotspots across all components of your distributed application. Each node on the map represents an application component or its dependencies; and has health key performance indicator and alerts status.
+- You can select through from any component to more detailed diagnostics, such as Application Insights events. If your app uses Azure services, you can also select through to Azure diagnostics, such as SQL Database Advisor recommendations.
+- Components are independently deployable parts of your distributed/microservices application. Developers and operations teams have code-level visibility or access to telemetry generated by these application components.
+- Components are different from "observed" external dependencies such as SQL, Event Hubs, etc. which your team/organization may not have access to (code or telemetry).
+- Components run on any number of server/role/container instances.
+- Components can be separate Application Insights instrumentation keys (even if subscriptions are different) or different roles reporting to a single Application Insights instrumentation key. The preview map experience shows the components regardless of their configuration.
+- You can see the full application topology across multiple levels of related application components. Components could be different Application Insights resources, or different roles in a single resource. The app map finds components by following HTTP dependency calls made between servers with the Application Insights SDK installed.
+- This experience starts with progressive discovery of the components. When you first load the application map, a set of queries is triggered to discover the components related to this component. A button at the top-left corner updates with the number of components in your application as they're discovered.
+- Selecting Update map components refreshes with all components discovered until that point. Depending on the complexity of your application, this may take a minute to load.
+- ![alt text](image-16.png)
+- ![alt text](image-17.png)
+
+## Implement Azure Container Apps
 - 
-
-
-
